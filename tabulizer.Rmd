@@ -1,30 +1,70 @@
 ---
-title: "Scraping PDF files in R manually with tabulizer package"
+title: "Scraping PDF files in `R` 'manually' with `tabulizer` package"
+knit: (function(input_file, encoding) {
+  out_dir <- 'docs';
+  rmarkdown::render(input_file,
+ encoding=encoding,
+ output_file=file.path(dirname(input_file), out_dir, 'index.html'))})
 author: "Behzod Ahundjanov"
-date: "7/12/2020"
+date: "7/5/2020"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+Recently I had to scrape 15,000--page PDF file and extract about 13,000 data tables. Luckily, `R` has an excellent package --- [`tablulizer`](https://cran.r-project.org/web/packages/tabulizer/) to automate this process and extract those locked tables and make them machine-readable. There are several well-written articles regarding the extraction of tables from the PDF files (for example see: [Introduction to tabulizer](https://cran.r-project.org/web/packages/tabulizer/vignettes/tabulizer.html), [PDF Scraping in R with tabulizer](https://www.r-bloggers.com/pdf-scraping-in-r-with-tabulizer/)). Even though `tabulizer` does an excellent job in automatically detecting the pages that have tabular data, sometimes it may wrongly calculate the width of the columns. As a result some columns of the table may merge. One of the solutions to clean this data and fixing combined columns using the [`separate()`](https://www.r-bloggers.com/pdf-scraping-in-r-with-tabulizer/) command.
+
+In this tutorial I want to show how to extract tables from PDF files by manually setting the location and column width of the data table. We extract and clean data using following packages:
+
+- tabulizer
+- shiny
+- tidyverse
+
+Note that `tabulizer` uses [Tabula java library](https://github.com/tabulapdf/tabula-java/) to process PDF data. First, you need to install correct version of [Java](https://www.java.com/en/download/manual.jsp) to your machine before using this package. Since I am using 64-bit Windows OS, I installed 64-bit Java.
+
+Here is the full `R` code I used to extract and tabulate the data.
+
+```{r eval=FALSE}
+options(java.parameters = "-Xmx12000m")
+
+library(beepr) #for fun sounds when task is completed :)
+library(tidyverse)
+library(tabulizer)
+library(shiny)
+
+area <- locate_areas("sample_table.pdf", pages = 1)
+
+table <- extract_tables("sample_table.pdf", pages = 1, area = list(c(101, 32, 582, 734)), columns = list(c(126, 184, 227, 270, 313, 358, 400, 435, 467, 499, 531, 566, 600, 639)), guess = FALSE,  output = "data.frame")
+beep(sound = 8)
 ```
 
-## R Markdown
+In the first line I changed the Java settings before applying the `tabulizer` library. Depending on the amount of pages and table data to process you may or may not need to change it. In my case Java always crashed when number of table data exceeded about 500 pages. So I changed Java settings based on the [advice](https://stackoverflow.com/questions/27153974/how-to-fix-outofmemoryerror-java-gc-overhead-limit-exceeded-in-r) on stackoverflow to avoid Java overheating. After this change everything run smoothly. 
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+Here are the steps to manually set the location and the column widths of tables. For this example I will be using following test [table](https://www.dropbox.com/sh/7iz6ikw4do72m5y/AADhRB4agc0BishhErCajIXDa/tutorials/tabulizer/sample_table.pdf?raw=1).
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+1. Run the `locate_areas` command.
+![image](C:/Users/behzo/Dropbox/1. TexasTech/Job Market/web files/tutorials/tabulizer/i1.png)
 
-```{r cars}
-summary(cars)
-```
+2. Click on "Show in new window" icon on Viewer and related PDF pages will open in a web browser
+![image](C:/Users/behzo/Dropbox/1. TexasTech/Job Market/web files/tutorials/tabulizer/i2.png)
 
-## Including Plots
+3. Now you have to select the area where the data table is located while `R` will be "listening" to the selections you make on your browser. Once you select the area of the table click on "Done" button.
+![image](C:/Users/behzo/Dropbox/1. TexasTech/Job Market/web files/tutorials/tabulizer/i3.png)
 
-You can also embed plots, for example:
+4. The location of the table will be stored to `area` object. You need to save these parameters for top, left, bottom and right. You can round these numbers.
+![image](C:/Users/behzo/Dropbox/1. TexasTech/Job Market/web files/tutorials/tabulizer/i4.jpg)
 
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
+5. Once you save the numbers for the location of the table, next task is to find the location of each column. We will simply repeat the previous task and  run the `locate_areas` command and open the PDF on a browser. This time we will simply select the columns of the table. In this example I simply select column _A_ and press "Done" button.
+![image](C:/Users/behzo/Dropbox/1. TexasTech/Job Market/web files/tutorials/tabulizer/i5.png)
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+6. Once again the location of the table will be stored to `area` object. You only need to save parameters for left and right.
+![image](C:/Users/behzo/Dropbox/1. TexasTech/Job Market/web files/tutorials/tabulizer/i6.png)
+
+7. We will repeat the tasks 5--6 with the next column (in our case "next" is column _C_; you skip the column _B_ since its parameters will be defined when you calculate the parameters of columns _A_ and _C_).
+![image](C:/Users/behzo/Dropbox/1. TexasTech/Job Market/web files/tutorials/tabulizer/i7.png)
+
+8. Again you only need to save parameters for the left and right.
+![image](C:/Users/behzo/Dropbox/1. TexasTech/Job Market/web files/tutorials/tabulizer/i8.png)
+
+9. You will repeat steps 5--6 for all columns and save the parameters for the left and right.
+
+10. Once you have the location parameters for the table and all columns it is the time to manually extract the table. For this task we will use `extract_tables`  function. And we will use the location parameters for the table (given in `area =`) and all columns (given in `columns =`). Note that `guess = FALSE` so that `tabulizer` uses "manual" table locations. Extracted table data can be viewed at `table[[1]]`.
+![image](C:/Users/behzo/Dropbox/1. TexasTech/Job Market/web files/tutorials/tabulizer/i9.png)
